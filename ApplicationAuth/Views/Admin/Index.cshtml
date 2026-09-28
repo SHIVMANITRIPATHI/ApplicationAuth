@@ -1,0 +1,100 @@
+@using ApplicationAuth.Models
+@{
+    ViewData["Title"] = "Admin Dashboard";
+    var summary = ViewBag.Summary as dynamic;
+    var users = ViewBag.Users as List<ApplicationUser> ?? new List<ApplicationUser>();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h3 mb-0">Admin Dashboard</h2>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted">Total Users</div>
+                <h3 class="mb-0">@summary.TotalUsers</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted">Pending Users</div>
+                <h3 class="mb-0">@summary.PendingUsers</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted">Approved Users</div>
+                <h3 class="mb-0">@summary.ApprovedUsers</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted">Active Users</div>
+                <h3 class="mb-0">@summary.ActiveUsers</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body">
+        <h3 class="h5">Users</h3>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Username</th>
+                        <th>Status</th>
+                        <th>Approval</th>
+                        <th>Account</th>
+                        <th>Created</th>
+                        <th>Last login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        <tr>
+                            <td>@user.FullName</td>
+                            <td>@user.Email</td>
+                            <td>@user.UserName</td>
+                            <td>@user.AccountStatus</td>
+                            <td>@(user.IsApproved ? "Approved" : "Not approved")</td>
+                            <td>@(user.IsActive ? "Active" : "Inactive")</td>
+                            <td>@user.CreatedAt.ToString("yyyy-MM-dd")</td>
+                            <td>@(user.LastLoginAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <a asp-action="Details" asp-route-id="@user.Id" class="btn btn-sm btn-outline-secondary">View</a>
+                                    <form asp-action="Approve" method="post">
+                                        <input type="hidden" name="id" value="@user.Id" />
+                                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                                    </form>
+                                    <form asp-action="Reject" method="post">
+                                        <input type="hidden" name="id" value="@user.Id" />
+                                        <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                                    </form>
+                                    <form asp-action="ToggleActive" method="post">
+                                        <input type="hidden" name="id" value="@user.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">@(user.IsActive ? "Deactivate" : "Activate")</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

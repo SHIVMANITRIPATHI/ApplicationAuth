@@ -1,0 +1,55 @@
+@using ApplicationAuth.Models
+@{
+    ViewData["Title"] = "User Dashboard";
+    var user = ViewBag.User as ApplicationUser;
+}
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+        <h2 class="h3 mb-3">Welcome, @user?.FullName</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Username</div>
+                    <div>@user?.UserName</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Email</div>
+                    <div>@user?.Email</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Account Status</div>
+                    <div>@user?.AccountStatus</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Approval</div>
+                    <div>@(user?.IsApproved == true ? "Approved" : "Pending or rejected")</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Account</div>
+                    <div>@(user?.IsActive == true ? "Active" : "Inactive")</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Created</div>
+                    <div>@user?.CreatedAt.ToString("yyyy-MM-dd")</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted">Last Login</div>
+                    <div>@(user?.LastLoginAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

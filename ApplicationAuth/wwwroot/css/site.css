@@ -1,0 +1,40 @@
+html {
+  font-size: 14px;
+}
+
+body {
+  margin: 0;
+  background: #f7f9fc;
+  color: #1f2937;
+  min-height: 100vh;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus,
+.btn:active:focus,
+.form-control:focus,
+.form-check-input:focus {
+  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.18);
+}
+
+.card {
+  border-radius: 0.9rem;
+}
+
+.navbar {
+  background: #ffffff;
+}
+
+.table td,
+.table th {
+  vertical-align: middle;
+}
+
+.alert {
+  border-radius: 0.75rem;
+}

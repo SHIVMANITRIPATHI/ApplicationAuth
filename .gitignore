@@ -1,0 +1,36 @@
+## Build outputs
+bin/
+obj/
+[Bb]uild/
+[Bb]uildResults/
+
+## User-specific
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## VS / VS Code
+.vscode/
+.vs/
+.idea/
+
+## Secrets and configuration
+**/appsettings.*.json
+.env
+.env.*
+secrets.json
+
+## Logs
+*.log
+
+## Database
+*.db
+*.db-shm
+*.db-wal
+*.mdf
+*.ldf
+
+## OS files
+.DS_Store
+Thumbs.db

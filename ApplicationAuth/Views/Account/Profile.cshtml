@@ -1,0 +1,35 @@
+@model ApplicationAuth.ViewModels.ProfileViewModel
+@{
+    ViewData["Title"] = "Profile";
+}
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+        <h2 class="h3 mb-4">Profile</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Full Name</dt>
+            <dd class="col-sm-9">@Model.FullName</dd>
+
+            <dt class="col-sm-3">Username</dt>
+            <dd class="col-sm-9">@Model.UserName</dd>
+
+            <dt class="col-sm-3">Email</dt>
+            <dd class="col-sm-9">@Model.Email</dd>
+
+            <dt class="col-sm-3">Account Status</dt>
+            <dd class="col-sm-9">@Model.AccountStatus</dd>
+
+            <dt class="col-sm-3">Approval</dt>
+            <dd class="col-sm-9">@(Model.IsApproved ? "Approved" : "Pending or rejected")</dd>
+
+            <dt class="col-sm-3">Account Active</dt>
+            <dd class="col-sm-9">@(Model.IsActive ? "Active" : "Inactive")</dd>
+
+            <dt class="col-sm-3">Created Date</dt>
+            <dd class="col-sm-9">@Model.CreatedAt.ToString("yyyy-MM-dd")</dd>
+
+            <dt class="col-sm-3">Last Login</dt>
+            <dd class="col-sm-9">@(Model.LastLoginAt.HasValue ? Model.LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm") : "Never")</dd>
+        </dl>
+    </div>
+</div>

@@ -1,0 +1,70 @@
+@model ApplicationAuth.ViewModels.LoginViewModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-5 col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4 p-lg-5">
+                <h2 class="h3 mb-2">Sign in</h2>
+                <p class="text-muted mb-4">Use a one-time code sent to your email.</p>
+
+                @if (TempData["SuccessMessage"] is not null)
+                {
+                    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+                }
+
+                <form asp-action="SendLoginOtp" method="post" class="mb-3">
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+                    <div class="mb-3">
+                        <label for="loginEmail" class="form-label">Email address</label>
+                        <input id="loginEmail" name="email" type="email" class="form-control" value="@Model.UserNameOrEmail" autocomplete="email" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Send OTP</button>
+                </form>
+
+                <form asp-action="VerifyLoginOtp" method="post" class="border-top pt-3">
+                    <div class="mb-3">
+                        <label for="verifyEmail" class="form-label">Email address</label>
+                        <input id="verifyEmail" name="email" type="email" class="form-control" value="@Model.UserNameOrEmail" autocomplete="email" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="otpCode" class="form-label">Six-digit code</label>
+                        <input id="otpCode" name="otpCode" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
+                    </div>
+                    <div class="form-check mb-3">
+                        <input id="rememberMe" name="rememberMe" type="checkbox" value="true" class="form-check-input" />
+                        <label for="rememberMe" class="form-check-label">Remember me</label>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Verify &amp; Login</button>
+                </form>
+
+                <details class="border-top mt-4 pt-3">
+                    <summary class="text-muted">Administrator password sign-in</summary>
+                    <form asp-action="Login" method="post" class="mt-3">
+                        <div class="mb-3">
+                            <label asp-for="UserNameOrEmail" class="form-label">Email or username</label>
+                            <input asp-for="UserNameOrEmail" class="form-control" autocomplete="username" />
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="Password" class="form-label"></label>
+                            <input asp-for="Password" class="form-control" type="password" autocomplete="current-password" />
+                        </div>
+                        <div class="form-check mb-3">
+                            <input asp-for="RememberMe" class="form-check-input" />
+                            <label asp-for="RememberMe" class="form-check-label"></label>
+                        </div>
+                        <button type="submit" class="btn btn-outline-secondary w-100">Admin sign in</button>
+                    </form>
+                </details>
+
+                <div class="mt-3 text-center">
+                    <a asp-action="Register">Create new account</a>
+                    <span class="text-muted mx-1">·</span>
+                    <a asp-action="ForgotPassword">Forgot password?</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
