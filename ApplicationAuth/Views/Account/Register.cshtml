@@ -42,13 +42,15 @@
                     </div>
 
                     <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <label asp-for="OtpCode" class="form-label mb-0"></label>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="sendOtpButton">Send OTP</button>
+                        <div class="d-flex align-items-center justify-content-between gap-3">
+                            <label asp-for="OtpCode" class="form-label mb-0 flex-grow-1">OTP</label>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="sendOtpButton">Send OTP</button>
                         </div>
-                        <input asp-for="OtpCode" class="form-control" maxlength="6" />
-                        <span asp-validation-for="OtpCode" class="text-danger"></span>
-                        <div id="otpStatus" class="small mt-2" role="status" aria-live="polite"></div>
+                        <div id="otpSection" class="mt-2 d-none">
+                            <input asp-for="OtpCode" class="form-control" maxlength="6" />
+                            <span asp-validation-for="OtpCode" class="text-danger"></span>
+                            <div id="otpStatus" class="small mt-2" role="status" aria-live="polite"></div>
+                        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Register</button>
@@ -64,11 +66,28 @@
 
 @section Scripts {
     <script>
-        document.getElementById('sendOtpButton').addEventListener('click', function () {
+        const otpSection = document.getElementById('otpSection');
+        const otpStatus = document.getElementById('otpStatus');
+        const sendOtpButton = document.getElementById('sendOtpButton');
+
+        function showOtpSection(message, isSuccess) {
+            otpSection.classList.remove('d-none');
+            otpStatus.textContent = message || 'Verification code sent.';
+            otpStatus.classList.toggle('text-danger', !isSuccess);
+            otpStatus.classList.toggle('text-success', isSuccess);
+            if (isSuccess) {
+                sendOtpButton.textContent = 'Resend OTP';
+                const otpInput = document.getElementById('OtpCode');
+                if (otpInput) {
+                    otpInput.focus();
+                }
+            }
+        }
+
+        sendOtpButton.addEventListener('click', function () {
             const email = document.getElementById('Email').value.trim();
-            const status = document.getElementById('otpStatus');
             if (!email) {
-                status.textContent = 'Enter your email address first.';
+                showOtpSection('Enter your email address first.', false);
                 return;
             }
 
@@ -83,13 +102,11 @@
             })
                 .then(async response => ({ response, data: await response.json() }))
                 .then(({ response, data }) => {
-                    status.textContent = data.message || 'Request could not be completed.';
-                    status.classList.toggle('text-danger', !response.ok);
-                    status.classList.toggle('text-success', response.ok);
+                    const message = data.message || 'Request could not be completed.';
+                    showOtpSection(message, response.ok);
                 })
                 .catch(() => {
-                    status.textContent = 'Email verification is temporarily unavailable.';
-                    status.classList.add('text-danger');
+                    showOtpSection('Email verification is temporarily unavailable.', false);
                 });
         });
     </script>

@@ -5,6 +5,7 @@ namespace ApplicationAuth.ViewModels;
 public class ForgotPasswordViewModel
 {
     [Required]
-    [Display(Name = "Email or Username")]
-    public string UserNameOrEmail { get; set; } = string.Empty;
+    [EmailAddress]
+    [Display(Name = "Email")]
+    public string Email { get; set; } = string.Empty;
 }

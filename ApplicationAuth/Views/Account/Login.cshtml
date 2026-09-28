@@ -5,66 +5,138 @@
 
 <div class="row justify-content-center">
     <div class="col-lg-5 col-md-8">
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 auth-card">
             <div class="card-body p-4 p-lg-5">
-                <h2 class="h3 mb-2">Sign in</h2>
-                <p class="text-muted mb-4">Use a one-time code sent to your email.</p>
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <h2 class="h3 mb-1">@((Model.LoginAs == "Admin") ? "Administrator Login" : "Welcome Back")</h2>
+                        <p class="text-muted mb-0">@((Model.LoginAs == "Admin") ? "Secure admin access" : "Please sign in to continue")</p>
+                    </div>
+                    <div class="ms-3">
+                        <label for="loginAs" class="form-label small text-muted mb-1">Login As</label>
+                        <select id="loginAs" class="form-select form-select-sm" aria-label="Login as selection">
+                            <option value="User" selected="@(Model.LoginAs == "User")">User</option>
+                            <option value="Admin" selected="@(Model.LoginAs == "Admin")">Admin</option>
+                        </select>
+                    </div>
+                </div>
 
                 @if (TempData["SuccessMessage"] is not null)
                 {
                     <div class="alert alert-success">@TempData["SuccessMessage"]</div>
                 }
 
-                <form asp-action="SendLoginOtp" method="post" class="mb-3">
-                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
-                    <div class="mb-3">
-                        <label for="loginEmail" class="form-label">Email address</label>
-                        <input id="loginEmail" name="email" type="email" class="form-control" value="@Model.UserNameOrEmail" autocomplete="email" required />
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Send OTP</button>
-                </form>
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-                <form asp-action="VerifyLoginOtp" method="post" class="border-top pt-3">
-                    <div class="mb-3">
-                        <label for="verifyEmail" class="form-label">Email address</label>
-                        <input id="verifyEmail" name="email" type="email" class="form-control" value="@Model.UserNameOrEmail" autocomplete="email" required />
-                    </div>
-                    <div class="mb-3">
-                        <label for="otpCode" class="form-label">Six-digit code</label>
-                        <input id="otpCode" name="otpCode" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
-                    </div>
-                    <div class="form-check mb-3">
-                        <input id="rememberMe" name="rememberMe" type="checkbox" value="true" class="form-check-input" />
-                        <label for="rememberMe" class="form-check-label">Remember me</label>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Verify &amp; Login</button>
-                </form>
+                <div id="userLoginPanel" class="auth-panel @(Model.LoginAs == "Admin" ? "d-none" : "")">
+                    <form asp-action="SendLoginOtp" method="post" novalidate>
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="LoginAs" value="User" />
 
-                <details class="border-top mt-4 pt-3">
-                    <summary class="text-muted">Administrator password sign-in</summary>
-                    <form asp-action="Login" method="post" class="mt-3">
                         <div class="mb-3">
-                            <label asp-for="UserNameOrEmail" class="form-label">Email or username</label>
-                            <input asp-for="UserNameOrEmail" class="form-control" autocomplete="username" />
+                            <label asp-for="Email" class="form-label"></label>
+                            <input asp-for="Email" class="form-control" type="email" autocomplete="email" value="@Model.Email" />
+                            <span asp-validation-for="Email" class="text-danger"></span>
                         </div>
+
                         <div class="mb-3">
                             <label asp-for="Password" class="form-label"></label>
                             <input asp-for="Password" class="form-control" type="password" autocomplete="current-password" />
+                            <span asp-validation-for="Password" class="text-danger"></span>
                         </div>
+
                         <div class="form-check mb-3">
                             <input asp-for="RememberMe" class="form-check-input" />
                             <label asp-for="RememberMe" class="form-check-label"></label>
                         </div>
-                        <button type="submit" class="btn btn-outline-secondary w-100">Admin sign in</button>
-                    </form>
-                </details>
 
-                <div class="mt-3 text-center">
-                    <a asp-action="Register">Create new account</a>
-                    <span class="text-muted mx-1">·</span>
-                    <a asp-action="ForgotPassword">Forgot password?</a>
+                        <button type="submit" class="btn btn-primary w-100">Send OTP</button>
+                    </form>
+
+                    @if (Model.ShowOtpSection)
+                    {
+                        <form asp-action="VerifyLoginOtp" method="post" class="mt-4 border-top pt-4" novalidate>
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="email" value="@Model.Email" />
+                            <input type="hidden" name="rememberMe" value="@(Model.RememberMe ? "true" : "false")" />
+
+                            <div class="mb-3">
+                                <label class="form-label">Verify Your Email</label>
+                                <p class="text-muted small mb-0">We sent a 6-digit verification code to your registered email address.</p>
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="OtpCode" class="form-label">OTP</label>
+                                <input asp-for="OtpCode" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" />
+                                <span asp-validation-for="OtpCode" class="text-danger"></span>
+                            </div>
+
+                            <div class="d-flex gap-2 flex-column flex-md-row">
+                                <button type="submit" class="btn btn-success flex-fill">Verify &amp; Sign In</button>
+                                <a asp-action="SendLoginOtp" class="btn btn-outline-secondary flex-fill" onclick="return false;">Resend OTP</a>
+                            </div>
+                        </form>
+                    }
+                </div>
+
+                <div id="adminLoginPanel" class="auth-panel @(Model.LoginAs == "Admin" ? "" : "d-none")">
+                    <form asp-action="Login" method="post" novalidate>
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="LoginAs" value="Admin" />
+
+                        <div class="mb-3">
+                            <label asp-for="UserNameOrEmail" class="form-label">Email or Username</label>
+                            <input asp-for="UserNameOrEmail" class="form-control" autocomplete="username" value="@Model.UserNameOrEmail" />
+                            <span asp-validation-for="UserNameOrEmail" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Password" class="form-label">Password</label>
+                            <input asp-for="Password" class="form-control" type="password" autocomplete="current-password" />
+                            <span asp-validation-for="Password" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input asp-for="RememberMe" class="form-check-input" />
+                            <label asp-for="RememberMe" class="form-check-label">Remember me</label>
+                        </div>
+
+                        <button type="submit" class="btn btn-outline-secondary w-100">Admin Login</button>
+                    </form>
+                </div>
+
+                <div class="mt-4 text-center small">
+                    <a asp-action="Register" class="text-decoration-none">New User Registration</a>
+                    <span class="text-muted mx-2">|</span>
+                    <a asp-action="ForgotPassword" class="text-decoration-none">Forgot Password?</a>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        const loginAsSelect = document.getElementById('loginAs');
+        const userPanel = document.getElementById('userLoginPanel');
+        const adminPanel = document.getElementById('adminLoginPanel');
+
+        function updateLoginPanels() {
+            const isAdmin = loginAsSelect.value === 'Admin';
+            userPanel.classList.toggle('d-none', isAdmin);
+            adminPanel.classList.toggle('d-none', !isAdmin);
+
+            const title = document.querySelector('.card-body h2');
+            const subtitle = document.querySelector('.card-body p.text-muted');
+            if (title) {
+                title.textContent = isAdmin ? 'Administrator Login' : 'Welcome Back';
+            }
+            if (subtitle) {
+                subtitle.textContent = isAdmin ? 'Secure admin access' : 'Please sign in to continue';
+            }
+        }
+
+        loginAsSelect.addEventListener('change', updateLoginPanels);
+        updateLoginPanels();
+    </script>
+}

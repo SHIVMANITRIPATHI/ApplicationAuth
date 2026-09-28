@@ -26,11 +26,11 @@ public class EmailService : IEmailService
 
     private async Task SendEmailAsync(string toEmail, string subject, string body)
     {
-        var host = _configuration["Email:SmtpHost"];
-        var username = _configuration["Email:Username"];
-        var password = _configuration["Email:Password"];
-        var fromAddress = _configuration["Email:FromAddress"];
-        var port = _configuration.GetValue<int>("Email:SmtpPort", 587);
+        var host = _configuration["Email:SmtpHost"] ?? _configuration["Email:Host"];
+        var username = _configuration["Email:Username"] ?? _configuration["Email:SmtpUsername"];
+        var password = _configuration["Email:Password"] ?? _configuration["Email:SmtpPassword"];
+        var fromAddress = _configuration["Email:FromAddress"] ?? _configuration["Email:SenderAddress"];
+        var port = _configuration.GetValue<int?>("Email:SmtpPort") ?? _configuration.GetValue<int?>("Email:Port") ?? 587;
 
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(username)
             || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(fromAddress)

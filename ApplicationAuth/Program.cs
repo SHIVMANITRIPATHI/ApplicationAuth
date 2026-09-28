@@ -9,6 +9,15 @@ using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(10);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (!builder.Environment.IsDevelopment())
@@ -16,7 +25,7 @@ if (!builder.Environment.IsDevelopment())
     var emailSettingsPresent = !string.IsNullOrWhiteSpace(builder.Configuration["Email:SmtpHost"])
         && builder.Configuration.GetValue<int>("Email:SmtpPort", 0) is > 0 and <= 65535
         && !string.IsNullOrWhiteSpace(builder.Configuration["Email:Username"])
-        && !string.IsNullOrWhiteSpace(builder.Configuration["Email:Password"])
+        && (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Password"]) || !string.IsNullOrWhiteSpace(builder.Configuration["Email:SmtpPassword"]))
         && !string.IsNullOrWhiteSpace(builder.Configuration["Email:FromAddress"]);
     var otpKeyIsValid = false;
     try
@@ -121,6 +130,7 @@ app.UseStaticFiles();
 app.UseStatusCodePagesWithReExecute("/Home/StatusCodePage", "?code={0}");
 app.UseRouting();
 app.UseRateLimiter();
+app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
