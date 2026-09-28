@@ -159,39 +159,26 @@ public class AccountController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
+    public async Task<IActionResult> AdminLogin(string? userNameOrEmail, string? password, bool rememberMe)
     {
-        ViewData["ReturnUrl"] = returnUrl;
-        model.LoginAs = "Admin";
-
-        if (!ModelState.IsValid)
+        var identifier = userNameOrEmail?.Trim();
+        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(password))
         {
-            return View(model);
+            return AdminLoginFailure(identifier, rememberMe);
         }
 
-        var user = await _userManager.FindByNameAsync(model.UserNameOrEmail.Trim())
-                   ?? await _userManager.FindByEmailAsync(model.UserNameOrEmail.Trim());
-
-        if (user == null)
+        var user = await _userManager.FindByNameAsync(identifier)
+                   ?? await _userManager.FindByEmailAsync(identifier);
+        if (user is null
+            || !await _userManager.IsInRoleAsync(user, "Admin")
+            || !user.IsApproved
+            || !user.IsActive
+            || user.AccountStatus != UserAccountStatus.Approved)
         {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View(model);
+            return AdminLoginFailure(identifier, rememberMe);
         }
 
-        if (!await _userManager.IsInRoleAsync(user, "Admin"))
-        {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View(model);
-        }
-
-        if (!user.IsApproved || !user.IsActive || user.AccountStatus != UserAccountStatus.Approved)
-        {
-            ModelState.AddModelError(string.Empty, "This administrator account is not active.");
-            return View(model);
-        }
-
-        var password = model.Password ?? string.Empty;
-        var result = await _signInManager.PasswordSignInAsync(user, password, model.RememberMe, lockoutOnFailure: true);
+        var result = await _signInManager.PasswordSignInAsync(user, password, rememberMe, lockoutOnFailure: true);
         if (result.Succeeded)
         {
             user.LastLoginAt = DateTime.UtcNow;
@@ -200,21 +187,13 @@ public class AccountController : Controller
             if (!updateResult.Succeeded)
             {
                 await _signInManager.SignOutAsync();
-                ModelState.AddModelError(string.Empty, "Sign-in could not be completed. Please try again.");
-                return View(model);
+                return AdminLoginFailure(identifier, rememberMe);
             }
 
-            return await RedirectToLocal(returnUrl, user);
+            return await RedirectToLocal(null, user);
         }
 
-        if (result.IsLockedOut)
-        {
-            ModelState.AddModelError(string.Empty, "Your account is locked due to repeated failed attempts.");
-            return View(model);
-        }
-
-        ModelState.AddModelError(string.Empty, "Invalid email or password.");
-        return View(model);
+        return AdminLoginFailure(identifier, rememberMe);
     }
 
     [HttpPost]
@@ -572,6 +551,18 @@ public class AccountController : Controller
         public string Email { get; set; } = string.Empty;
         public bool RememberMe { get; set; }
         public DateTime ExpiresAtUtc { get; set; }
+    }
+
+    private IActionResult AdminLoginFailure(string? identifier, bool rememberMe)
+    {
+        ModelState.Clear();
+        ModelState.AddModelError(string.Empty, "Invalid email or password.");
+        return View("Login", new LoginViewModel
+        {
+            LoginAs = "Admin",
+            UserNameOrEmail = identifier ?? string.Empty,
+            RememberMe = rememberMe
+        });
     }
 
     private async Task<IActionResult> RedirectToLocal(string? returnUrl, ApplicationUser? user = null)

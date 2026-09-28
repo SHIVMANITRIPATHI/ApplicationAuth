@@ -80,9 +80,8 @@
                 </div>
 
                 <div id="adminLoginPanel" class="auth-panel @(Model.LoginAs == "Admin" ? "" : "d-none")">
-                    <form asp-action="Login" method="post" novalidate>
+                    <form asp-action="AdminLogin" method="post" novalidate>
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="LoginAs" value="Admin" />
 
                         <div class="mb-3">
                             <label asp-for="UserNameOrEmail" class="form-label">Email or Username</label>
