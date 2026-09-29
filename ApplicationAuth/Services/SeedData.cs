@@ -27,8 +27,10 @@ public static class SeedData
             return;
         }
 
-        var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
-        if (existingAdmin is not null)
+        if ((await userManager.GetUsersInRoleAsync("Admin")).Count > 0
+            || await userManager.FindByNameAsync("admin") is not null
+            || await userManager.FindByEmailAsync(adminEmail) is not null
+            || await userManager.FindByNameAsync(adminEmail) is not null)
         {
             return;
         }

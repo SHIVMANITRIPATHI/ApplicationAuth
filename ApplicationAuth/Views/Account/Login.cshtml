@@ -29,14 +29,15 @@
                 <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
                 <div id="userLoginPanel" class="auth-panel @(Model.LoginAs == "Admin" ? "d-none" : "")">
-                    <form asp-action="SendLoginOtp" method="post" novalidate>
+                    <form asp-action="Login" method="post" novalidate>
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="LoginAs" value="User" />
+                        <input type="hidden" asp-for="ReturnUrl" />
 
                         <div class="mb-3">
-                            <label asp-for="Email" class="form-label"></label>
-                            <input asp-for="Email" class="form-control" type="email" autocomplete="email" value="@Model.Email" />
-                            <span asp-validation-for="Email" class="text-danger"></span>
+                            <label asp-for="UserName" class="form-label"></label>
+                            <input asp-for="UserName" class="form-control" autocomplete="username" />
+                            <span asp-validation-for="UserName" class="text-danger"></span>
                         </div>
 
                         <div class="mb-3">
@@ -45,54 +46,51 @@
                             <span asp-validation-for="Password" class="text-danger"></span>
                         </div>
 
+                        <div class="mb-3">
+                            <div class="mb-2">
+                                <label class="form-label">CAPTCHA</label>
+                                <img src="@Url.Action("LoginCaptchaImage", "Account")" alt="CAPTCHA" class="d-inline-block border rounded bg-white" width="180" height="52" />
+                            </div>
+                            <label asp-for="CaptchaAnswer" class="form-label"></label>
+                            <input asp-for="CaptchaAnswer" class="form-control" autocomplete="off" autocapitalize="characters" />
+                            <span asp-validation-for="CaptchaAnswer" class="text-danger"></span>
+                        </div>
+
                         <div class="form-check mb-3">
                             <input asp-for="RememberMe" class="form-check-input" />
                             <label asp-for="RememberMe" class="form-check-label"></label>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100">Send OTP</button>
+                        <button type="submit" class="btn btn-primary w-100">Login</button>
                     </form>
-
-                    @if (Model.ShowOtpSection)
-                    {
-                        <form asp-action="VerifyLoginOtp" method="post" class="mt-4 border-top pt-4" novalidate>
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="email" value="@Model.Email" />
-                            <input type="hidden" name="rememberMe" value="@(Model.RememberMe ? "true" : "false")" />
-
-                            <div class="mb-3">
-                                <label class="form-label">Verify Your Email</label>
-                                <p class="text-muted small mb-0">We sent a 6-digit verification code to your registered email address.</p>
-                            </div>
-
-                            <div class="mb-3">
-                                <label asp-for="OtpCode" class="form-label">OTP</label>
-                                <input asp-for="OtpCode" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" />
-                                <span asp-validation-for="OtpCode" class="text-danger"></span>
-                            </div>
-
-                            <div class="d-flex gap-2 flex-column flex-md-row">
-                                <button type="submit" class="btn btn-success flex-fill">Verify &amp; Sign In</button>
-                                <a asp-action="SendLoginOtp" class="btn btn-outline-secondary flex-fill" onclick="return false;">Resend OTP</a>
-                            </div>
-                        </form>
-                    }
                 </div>
 
                 <div id="adminLoginPanel" class="auth-panel @(Model.LoginAs == "Admin" ? "" : "d-none")">
-                    <form asp-action="AdminLogin" method="post" novalidate>
+                    <form asp-action="Login" method="post" novalidate>
                         @Html.AntiForgeryToken()
+                        <input type="hidden" name="LoginAs" value="Admin" />
+                        <input type="hidden" asp-for="ReturnUrl" />
 
                         <div class="mb-3">
-                            <label asp-for="UserNameOrEmail" class="form-label">Email or Username</label>
-                            <input asp-for="UserNameOrEmail" class="form-control" autocomplete="username" value="@Model.UserNameOrEmail" />
-                            <span asp-validation-for="UserNameOrEmail" class="text-danger"></span>
+                            <label asp-for="UserName" class="form-label"></label>
+                            <input asp-for="UserName" class="form-control" autocomplete="username" />
+                            <span asp-validation-for="UserName" class="text-danger"></span>
                         </div>
 
                         <div class="mb-3">
                             <label asp-for="Password" class="form-label">Password</label>
                             <input asp-for="Password" class="form-control" type="password" autocomplete="current-password" />
                             <span asp-validation-for="Password" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="mb-2">
+                                <label class="form-label">CAPTCHA</label>
+                                <img src="@Url.Action("LoginCaptchaImage", "Account")" alt="CAPTCHA" class="d-inline-block border rounded bg-white" width="180" height="52" />
+                            </div>
+                            <label asp-for="CaptchaAnswer" class="form-label"></label>
+                            <input asp-for="CaptchaAnswer" class="form-control" autocomplete="off" autocapitalize="characters" />
+                            <span asp-validation-for="CaptchaAnswer" class="text-danger"></span>
                         </div>
 
                         <div class="form-check mb-3">

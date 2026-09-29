@@ -1,7 +1,4 @@
-using System.Net.Mail;
-using System.Security.Claims;
-using System.Text.Json;
-using ApplicationAuth.Data;
+using System.Security.Cryptography;
 using ApplicationAuth.Models;
 using ApplicationAuth.Services;
 using ApplicationAuth.ViewModels;
@@ -9,7 +6,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 
 namespace ApplicationAuth.Controllers;
 
@@ -17,8 +13,6 @@ public class AccountController : Controller
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
-    private readonly RoleManager<IdentityRole> _roleManager;
-    private readonly ApplicationDbContext _context;
     private readonly IOtpService _otpService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AccountController> _logger;
@@ -26,16 +20,12 @@ public class AccountController : Controller
     public AccountController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
-        RoleManager<IdentityRole> roleManager,
-        ApplicationDbContext context,
         IOtpService otpService,
         IEmailService emailService,
         ILogger<AccountController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
-        _roleManager = roleManager;
-        _context = context;
         _otpService = otpService;
         _emailService = emailService;
         _logger = logger;
@@ -44,6 +34,7 @@ public class AccountController : Controller
     [HttpGet]
     public IActionResult Register()
     {
+        CreateCaptcha(RegistrationCaptchaSessionKey);
         return View(new RegisterViewModel());
     }
 
@@ -52,9 +43,14 @@ public class AccountController : Controller
     [EnableRateLimiting("otp")]
     public async Task<IActionResult> Register(RegisterViewModel model)
     {
+        if (!ValidateCaptcha(RegistrationCaptchaSessionKey, model.CaptchaAnswer))
+        {
+            ModelState.AddModelError(nameof(model.CaptchaAnswer), "The CAPTCHA is incorrect or expired.");
+        }
+
         if (!ModelState.IsValid)
         {
-            return View(model);
+            return RegistrationFailure(model);
         }
 
         var normalizedEmail = model.Email.Trim();
@@ -63,20 +59,13 @@ public class AccountController : Controller
         if (await _userManager.FindByEmailAsync(normalizedEmail) is not null)
         {
             ModelState.AddModelError(nameof(RegisterViewModel.Email), "An account with this email already exists.");
-            return View(model);
+            return RegistrationFailure(model);
         }
 
         if (await _userManager.FindByNameAsync(normalizedUserName) is not null)
         {
             ModelState.AddModelError(nameof(RegisterViewModel.UserName), "This username is already taken.");
-            return View(model);
-        }
-
-        var validOtp = await _otpService.VerifyOtpAsync(normalizedEmail, model.OtpCode, OtpPurpose.Registration);
-        if (!validOtp)
-        {
-            ModelState.AddModelError(nameof(RegisterViewModel.OtpCode), "The registration OTP is invalid or expired.");
-            return View(model);
+            return RegistrationFailure(model);
         }
 
         var user = new ApplicationUser
@@ -87,8 +76,7 @@ public class AccountController : Controller
             IsApproved = false,
             IsActive = false,
             AccountStatus = UserAccountStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
-            EmailConfirmed = true
+            CreatedAt = DateTime.UtcNow
         };
 
         var result = await _userManager.CreateAsync(user, model.Password);
@@ -99,12 +87,11 @@ public class AccountController : Controller
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
-            return View(model);
+            return RegistrationFailure(model);
         }
 
         await _userManager.AddToRoleAsync(user, "User");
 
-        TempData["SuccessMessage"] = "Your registration has been submitted and is awaiting administrator approval.";
         return RedirectToAction(nameof(RegistrationSubmitted));
     }
 
@@ -114,86 +101,96 @@ public class AccountController : Controller
         return View();
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [EnableRateLimiting("otp")]
-    public async Task<IActionResult> SendRegistrationOtp(string email)
-    {
-        var normalizedEmail = email?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedEmail) || !MailAddress.TryCreate(normalizedEmail, out _))
-        {
-            return Json(new { success = false, message = "Enter a valid email address." });
-        }
-
-        if (await _userManager.FindByEmailAsync(normalizedEmail) is not null)
-        {
-            return Json(new { success = false, message = "An account with this email already exists." });
-        }
-
-        try
-        {
-            var otpCode = await _otpService.GenerateOtpAsync(normalizedEmail, OtpPurpose.Registration);
-            await _emailService.SendOtpAsync(normalizedEmail, otpCode, "registration");
-            return Json(new { success = true, message = "If eligible, a verification code has been sent to that email." });
-        }
-        catch (OtpCooldownException)
-        {
-            return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { success = false, message = "Please wait before requesting another code." });
-        }
-        catch (Exception exception) when (exception is EmailDeliveryException or InvalidOperationException)
-        {
-            await _otpService.InvalidateExistingOtpsAsync(normalizedEmail, OtpPurpose.Registration);
-            _logger.LogError("Registration OTP delivery unavailable. Error type: {ErrorType}", exception.GetType().Name);
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { success = false, message = "Email verification is temporarily unavailable." });
-        }
-    }
-
     [HttpGet]
     public IActionResult Login(string? returnUrl = null)
     {
-        ViewData["ReturnUrl"] = returnUrl;
-        return View(new LoginViewModel { LoginAs = "User" });
+        var model = new LoginViewModel { LoginAs = "User", ReturnUrl = returnUrl };
+        CreateCaptcha(LoginCaptchaSessionKey);
+        return View(model);
     }
+
+    [HttpGet]
+    public IActionResult RegistrationCaptchaImage() => CreateCaptchaImage(RegistrationCaptchaSessionKey);
+
+    [HttpGet]
+    public IActionResult LoginCaptchaImage() => CreateCaptchaImage(LoginCaptchaSessionKey);
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AdminLogin(string? userNameOrEmail, string? password, bool rememberMe)
+    [EnableRateLimiting("otp")]
+    public async Task<IActionResult> Login(LoginViewModel model)
     {
-        var identifier = userNameOrEmail?.Trim();
-        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(password))
+        var loginAs = model.LoginAs is "Admin" or "User" ? model.LoginAs : "User";
+        if (model.LoginAs is not ("Admin" or "User"))
         {
-            return AdminLoginFailure(identifier, rememberMe);
+            ModelState.AddModelError(string.Empty, "Invalid username or password.");
         }
 
-        var user = await _userManager.FindByNameAsync(identifier)
-                   ?? await _userManager.FindByEmailAsync(identifier);
-        if (user is null
-            || !await _userManager.IsInRoleAsync(user, "Admin")
-            || !user.IsApproved
-            || !user.IsActive
-            || user.AccountStatus != UserAccountStatus.Approved)
+        if (!ValidateCaptcha(LoginCaptchaSessionKey, model.CaptchaAnswer))
         {
-            return AdminLoginFailure(identifier, rememberMe);
+            ModelState.AddModelError(nameof(model.CaptchaAnswer), "The CAPTCHA is incorrect or expired.");
         }
 
-        var result = await _signInManager.PasswordSignInAsync(user, password, rememberMe, lockoutOnFailure: true);
-        if (result.Succeeded)
+        if (!ModelState.IsValid)
         {
-            user.LastLoginAt = DateTime.UtcNow;
-            user.UpdatedAt = DateTime.UtcNow;
-            var updateResult = await _userManager.UpdateAsync(user);
-            if (!updateResult.Succeeded)
+            return LoginFailure(model, loginAs);
+        }
+
+        model.LoginAs = loginAs;
+        var user = await _userManager.FindByNameAsync(model.UserName.Trim());
+        if (user is null)
+        {
+            ModelState.AddModelError(string.Empty, "Invalid username or password.");
+            return LoginFailure(model, loginAs);
+        }
+
+        var passwordResult = await _signInManager.CheckPasswordSignInAsync(user, model.Password!, lockoutOnFailure: true);
+        if (!passwordResult.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, "Invalid username or password.");
+            return LoginFailure(model, loginAs);
+        }
+
+        if (loginAs == "User")
+        {
+            var message = user.AccountStatus == UserAccountStatus.Pending
+                ? "Your account is pending Admin approval. Please wait until an Admin approves your account."
+                : user.AccountStatus == UserAccountStatus.Rejected
+                    ? "Your account has been rejected. Please contact the administrator."
+                    : !user.IsActive || user.AccountStatus == UserAccountStatus.Suspended
+                        ? "Your account is currently inactive. Please contact the administrator."
+                        : !user.IsApproved || user.AccountStatus != UserAccountStatus.Approved
+                            ? "Your account is pending Admin approval. Please wait until an Admin approves your account."
+                            : null;
+            if (message is not null)
             {
-                await _signInManager.SignOutAsync();
-                return AdminLoginFailure(identifier, rememberMe);
+                ModelState.AddModelError(string.Empty, message);
+                return LoginFailure(model, loginAs);
             }
-
-            return await RedirectToLocal(null, user);
+        }
+        else if (!user.IsApproved || !user.IsActive || user.AccountStatus != UserAccountStatus.Approved)
+        {
+            ModelState.AddModelError(string.Empty, "Invalid username or password.");
+            return LoginFailure(model, loginAs);
         }
 
-        return AdminLoginFailure(identifier, rememberMe);
+        if (!await _userManager.IsInRoleAsync(user, loginAs))
+        {
+            ModelState.AddModelError(string.Empty, "Invalid username or password.");
+            return LoginFailure(model, loginAs);
+        }
+
+        user.LastLoginAt = DateTime.UtcNow;
+        user.UpdatedAt = DateTime.UtcNow;
+        var updateResult = await _userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, "Sign-in could not be completed. Please try again.");
+            return LoginFailure(model, loginAs);
+        }
+
+        await _signInManager.SignInAsync(user, model.RememberMe);
+        return await RedirectToLocal(model.ReturnUrl, user);
     }
 
     [HttpPost]
@@ -203,145 +200,6 @@ public class AccountController : Controller
     {
         await _signInManager.SignOutAsync();
         return RedirectToAction(nameof(Login));
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [EnableRateLimiting("otp")]
-    public async Task<IActionResult> SendLoginOtp(string email, string password, bool rememberMe)
-    {
-        var normalizedEmail = email?.Trim();
-        var normalizedPassword = password ?? string.Empty;
-
-        if (string.IsNullOrWhiteSpace(normalizedEmail) || !MailAddress.TryCreate(normalizedEmail, out _) || string.IsNullOrWhiteSpace(normalizedPassword))
-        {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail ?? string.Empty, Password = string.Empty, LoginAs = "User" });
-        }
-
-        var account = await _userManager.FindByEmailAsync(normalizedEmail);
-        if (account is null)
-        {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        if (await _userManager.IsInRoleAsync(account, "Admin") || !await _userManager.IsInRoleAsync(account, "User"))
-        {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        if (account.AccountStatus == UserAccountStatus.Pending)
-        {
-            ModelState.AddModelError(string.Empty, "Your account is pending administrator approval.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        if (account.AccountStatus == UserAccountStatus.Rejected)
-        {
-            ModelState.AddModelError(string.Empty, "Your account has been rejected. Please contact the administrator.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        if (!account.IsActive || account.AccountStatus == UserAccountStatus.Suspended)
-        {
-            ModelState.AddModelError(string.Empty, "Your account is currently inactive. Please contact the administrator.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        if (!account.IsApproved || account.AccountStatus != UserAccountStatus.Approved)
-        {
-            ModelState.AddModelError(string.Empty, "Your account is pending administrator approval.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        var passwordIsValid = await _userManager.CheckPasswordAsync(account, normalizedPassword);
-        if (!passwordIsValid)
-        {
-            ModelState.AddModelError(string.Empty, "Invalid email or password.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-
-        try
-        {
-            var otpCode = await _otpService.GenerateOtpAsync(account.Email!, OtpPurpose.Login, account.Id);
-            await _emailService.SendOtpAsync(account.Email!, otpCode, "login");
-            await StorePendingUserLoginChallengeAsync(account.Email!, rememberMe);
-            return View("Login", new LoginViewModel
-            {
-                Email = normalizedEmail,
-                Password = string.Empty,
-                LoginAs = "User",
-                RememberMe = rememberMe,
-                ShowOtpSection = true
-            });
-        }
-        catch (OtpCooldownException)
-        {
-            ModelState.AddModelError(string.Empty, "Please wait before requesting another code.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-        catch (Exception exception) when (exception is EmailDeliveryException or InvalidOperationException)
-        {
-            await _otpService.InvalidateExistingOtpsAsync(account.Email!, OtpPurpose.Login);
-            _logger.LogError("Login OTP delivery unavailable. Error type: {ErrorType}", exception.GetType().Name);
-            ModelState.AddModelError(string.Empty, "Email verification is temporarily unavailable. Please try again later.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, Password = string.Empty, LoginAs = "User" });
-        }
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [EnableRateLimiting("otp")]
-    public async Task<IActionResult> VerifyLoginOtp(string email, string otpCode, bool rememberMe)
-    {
-        var normalizedEmail = email?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedEmail) || !MailAddress.TryCreate(normalizedEmail, out _)
-            || string.IsNullOrWhiteSpace(otpCode) || otpCode.Length != 6 || !otpCode.All(char.IsDigit))
-        {
-            ModelState.AddModelError(string.Empty, "Enter a valid email address and six-digit code.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail ?? string.Empty, OtpCode = otpCode, LoginAs = "User", ShowOtpSection = true });
-        }
-
-        var challenge = await GetPendingUserLoginChallengeAsync();
-        if (challenge is null || !string.Equals(challenge.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase) || challenge.ExpiresAtUtc <= DateTime.UtcNow)
-        {
-            HttpContext.Session.Remove(PendingUserLoginSessionKey);
-            ModelState.AddModelError(string.Empty, "The verification code is invalid or expired.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, OtpCode = otpCode, LoginAs = "User", ShowOtpSection = true });
-        }
-
-        var account = await _userManager.FindByEmailAsync(normalizedEmail);
-        if (account is null || !account.IsApproved || !account.IsActive
-            || account.AccountStatus != UserAccountStatus.Approved
-            || await _userManager.IsInRoleAsync(account, "Admin")
-            || !await _userManager.IsInRoleAsync(account, "User"))
-        {
-            HttpContext.Session.Remove(PendingUserLoginSessionKey);
-            ModelState.AddModelError(string.Empty, "This account is not eligible for sign-in.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, OtpCode = otpCode, LoginAs = "User", ShowOtpSection = true });
-        }
-
-        if (!await _otpService.VerifyOtpAsync(account.Email!, otpCode, OtpPurpose.Login))
-        {
-            ModelState.AddModelError(string.Empty, "The verification code is invalid or expired.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, OtpCode = otpCode, LoginAs = "User", ShowOtpSection = true });
-        }
-
-        HttpContext.Session.Remove(PendingUserLoginSessionKey);
-
-        account.LastLoginAt = DateTime.UtcNow;
-        account.UpdatedAt = DateTime.UtcNow;
-        var updateResult = await _userManager.UpdateAsync(account);
-        if (!updateResult.Succeeded)
-        {
-            ModelState.AddModelError(string.Empty, "Sign-in could not be completed. Please try again.");
-            return View("Login", new LoginViewModel { Email = normalizedEmail, OtpCode = otpCode, LoginAs = "User", ShowOtpSection = true });
-        }
-
-        await _signInManager.SignInAsync(account, challenge.RememberMe || rememberMe);
-        return await RedirectToLocal(null, account);
     }
 
     [HttpGet]
@@ -512,57 +370,134 @@ public class AccountController : Controller
         return View();
     }
 
-    private const string PendingUserLoginSessionKey = "PendingUserLoginChallenge";
-
-    private async Task StorePendingUserLoginChallengeAsync(string email, bool rememberMe)
+    private const string LoginCaptchaSessionKey = "LoginCaptcha";
+    private const string RegistrationCaptchaSessionKey = "RegistrationCaptcha";
+    private const string CaptchaCharacters = "23456789";
+    private static readonly IReadOnlyDictionary<char, string[]> CaptchaGlyphRows = new Dictionary<char, string[]>
     {
-        var challenge = new PendingUserLoginChallenge
-        {
-            Email = email,
-            RememberMe = rememberMe,
-            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(10)
-        };
+        ['2'] = ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+        ['3'] = ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+        ['4'] = ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+        ['5'] = ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+        ['6'] = ["01111", "10000", "10000", "11110", "10001", "10001", "01110"],
+        ['7'] = ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+        ['8'] = ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+        ['9'] = ["01110", "10001", "10001", "01111", "00001", "00001", "11110"]
+    };
 
-        HttpContext.Session.SetString(PendingUserLoginSessionKey, JsonSerializer.Serialize(challenge));
+    private void CreateCaptcha(string sessionKey)
+    {
+        var challenge = new string(Enumerable.Range(0, 6)
+            .Select(_ => CaptchaCharacters[RandomNumberGenerator.GetInt32(CaptchaCharacters.Length)])
+            .ToArray());
+
+        HttpContext.Session.SetString(sessionKey, challenge);
     }
 
-    private async Task<PendingUserLoginChallenge?> GetPendingUserLoginChallengeAsync()
+    private bool ValidateCaptcha(string sessionKey, string? answer)
     {
-        var value = HttpContext.Session.GetString(PendingUserLoginSessionKey);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        try
-        {
-            var challenge = JsonSerializer.Deserialize<PendingUserLoginChallenge>(value);
-            return challenge is null || string.IsNullOrWhiteSpace(challenge.Email) ? null : challenge;
-        }
-        catch (JsonException)
-        {
-            HttpContext.Session.Remove(PendingUserLoginSessionKey);
-            return null;
-        }
+        var expected = HttpContext.Session.GetString(sessionKey);
+        HttpContext.Session.Remove(sessionKey);
+        return !string.IsNullOrWhiteSpace(expected)
+            && string.Equals(expected, answer?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private sealed class PendingUserLoginChallenge
+    private IActionResult CreateCaptchaImage(string sessionKey)
     {
-        public string Email { get; set; } = string.Empty;
-        public bool RememberMe { get; set; }
-        public DateTime ExpiresAtUtc { get; set; }
+        var challenge = HttpContext.Session.GetString(sessionKey);
+        if (string.IsNullOrWhiteSpace(challenge))
+        {
+            return NotFound();
+        }
+
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["Expires"] = "0";
+
+        var glyphs = string.Join(string.Empty, challenge.Select((digit, index) =>
+        {
+            var x = 8 + index * 27;
+            var rotation = RandomNumberGenerator.GetInt32(-13, 14);
+            var cells = new List<string>();
+            for (var row = 0; row < CaptchaGlyphRows[digit].Length; row++)
+            {
+                for (var column = 0; column < CaptchaGlyphRows[digit][row].Length; column++)
+                {
+                    if (CaptchaGlyphRows[digit][row][column] != '1')
+                    {
+                        continue;
+                    }
+
+                    var centerX = 1.5 + column * 4 + RandomNumberGenerator.GetInt32(-8, 9) / 10.0;
+                    var centerY = 1.5 + row * 4 + RandomNumberGenerator.GetInt32(-8, 9) / 10.0;
+                    var radius = RandomNumberGenerator.GetInt32(12, 21) / 10.0;
+                    cells.Add(FormattableString.Invariant($"<circle cx=\"{centerX:F1}\" cy=\"{centerY:F1}\" r=\"{radius:F1}\" />"));
+                }
+            }
+
+            return $"<g transform=\"translate({x} 10) rotate({rotation} 10 14)\">{string.Join(string.Empty, cells)}</g>";
+        }));
+        var noise = string.Join(string.Empty, Enumerable.Range(0, 9).Select(_ =>
+            $"<path d=\"M{RandomNumberGenerator.GetInt32(0, 180)} {RandomNumberGenerator.GetInt32(0, 52)} Q{RandomNumberGenerator.GetInt32(20, 160)} {RandomNumberGenerator.GetInt32(-8, 60)} {RandomNumberGenerator.GetInt32(0, 180)} {RandomNumberGenerator.GetInt32(0, 52)}\" />"));
+        var noiseSeed = RandomNumberGenerator.GetInt32(1, int.MaxValue);
+        var svg = $"""
+            <svg xmlns="http://www.w3.org/2000/svg" width="180" height="52" viewBox="0 0 180 52">
+              <defs>
+                <filter id="warp" x="-10%" y="-10%" width="120%" height="120%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="{noiseSeed}" result="noise" />
+                  <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G" />
+                </filter>
+              </defs>
+              <rect width="180" height="52" rx="4" fill="#f8f9fa" />
+              <g fill="none" stroke="#adb5bd" stroke-width="1">{noise}</g>
+              <g fill="#212529" filter="url(#warp)">{glyphs}</g>
+            </svg>
+            """;
+        return Content(svg, "image/svg+xml; charset=utf-8");
     }
 
-    private IActionResult AdminLoginFailure(string? identifier, bool rememberMe)
+    private IActionResult RegistrationFailure(RegisterViewModel model)
     {
-        ModelState.Clear();
-        ModelState.AddModelError(string.Empty, "Invalid email or password.");
-        return View("Login", new LoginViewModel
+        model.CaptchaAnswer = string.Empty;
+        var captchaErrors = ModelState.TryGetValue(nameof(model.CaptchaAnswer), out var captchaState)
+            ? captchaState.Errors.Select(error => error.ErrorMessage).ToArray()
+            : Array.Empty<string>();
+        ModelState.Remove(nameof(model.CaptchaAnswer));
+        foreach (var error in captchaErrors)
         {
-            LoginAs = "Admin",
-            UserNameOrEmail = identifier ?? string.Empty,
-            RememberMe = rememberMe
-        });
+            ModelState.AddModelError(nameof(model.CaptchaAnswer), error);
+        }
+
+        CreateCaptcha(RegistrationCaptchaSessionKey);
+        return View("Register", model);
+    }
+
+    private IActionResult LoginFailure(LoginViewModel model, string loginAs)
+    {
+        model.LoginAs = loginAs;
+        model.UserName = model.UserName?.Trim() ?? string.Empty;
+        model.Password = null;
+        model.CaptchaAnswer = string.Empty;
+        var passwordErrors = ModelState.TryGetValue(nameof(model.Password), out var passwordState)
+            ? passwordState.Errors.Select(error => error.ErrorMessage).ToArray()
+            : Array.Empty<string>();
+        ModelState.Remove(nameof(model.Password));
+        foreach (var error in passwordErrors)
+        {
+            ModelState.AddModelError(nameof(model.Password), error);
+        }
+
+        var captchaErrors = ModelState.TryGetValue(nameof(model.CaptchaAnswer), out var captchaState)
+            ? captchaState.Errors.Select(error => error.ErrorMessage).ToArray()
+            : Array.Empty<string>();
+        ModelState.Remove(nameof(model.CaptchaAnswer));
+        foreach (var error in captchaErrors)
+        {
+            ModelState.AddModelError(nameof(model.CaptchaAnswer), error);
+        }
+
+        CreateCaptcha(LoginCaptchaSessionKey);
+        return View("Login", model);
     }
 
     private async Task<IActionResult> RedirectToLocal(string? returnUrl, ApplicationUser? user = null)

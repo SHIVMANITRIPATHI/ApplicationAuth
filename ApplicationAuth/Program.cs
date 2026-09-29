@@ -20,28 +20,6 @@ builder.Services.AddSession(options =>
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (!builder.Environment.IsDevelopment())
-{
-    var emailSettingsPresent = !string.IsNullOrWhiteSpace(builder.Configuration["Email:SmtpHost"])
-        && builder.Configuration.GetValue<int>("Email:SmtpPort", 0) is > 0 and <= 65535
-        && !string.IsNullOrWhiteSpace(builder.Configuration["Email:Username"])
-        && (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Password"]) || !string.IsNullOrWhiteSpace(builder.Configuration["Email:SmtpPassword"]))
-        && !string.IsNullOrWhiteSpace(builder.Configuration["Email:FromAddress"]);
-    var otpKeyIsValid = false;
-    try
-    {
-        otpKeyIsValid = Convert.FromBase64String(builder.Configuration["Otp:HmacKey"] ?? string.Empty).Length >= 32;
-    }
-    catch (FormatException)
-    {
-    }
-
-    if (!emailSettingsPresent || !otpKeyIsValid)
-    {
-        throw new InvalidOperationException("Production email and OTP security settings are required.");
-    }
-}
-
 if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContext<ApplicationDbContext>(options =>

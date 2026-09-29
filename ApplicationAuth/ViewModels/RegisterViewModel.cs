@@ -32,7 +32,6 @@ public class RegisterViewModel
     public string ConfirmPassword { get; set; } = string.Empty;
 
     [Required]
-    [Display(Name = "OTP")]
-    [RegularExpression("\\d{6}", ErrorMessage = "OTP must be 6 digits.")]
-    public string OtpCode { get; set; } = string.Empty;
+    [Display(Name = "CAPTCHA")]
+    public string CaptchaAnswer { get; set; } = string.Empty;
 }

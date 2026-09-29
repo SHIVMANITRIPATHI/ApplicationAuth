@@ -42,15 +42,13 @@
                     </div>
 
                     <div class="mb-3">
-                        <div class="d-flex align-items-center justify-content-between gap-3">
-                            <label asp-for="OtpCode" class="form-label mb-0 flex-grow-1">OTP</label>
-                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="sendOtpButton">Send OTP</button>
+                        <div class="mb-2">
+                            <label class="form-label">CAPTCHA</label>
+                            <img src="@Url.Action("RegistrationCaptchaImage", "Account")" alt="CAPTCHA" class="d-block border rounded bg-white" width="180" height="52" />
                         </div>
-                        <div id="otpSection" class="mt-2 d-none">
-                            <input asp-for="OtpCode" class="form-control" maxlength="6" />
-                            <span asp-validation-for="OtpCode" class="text-danger"></span>
-                            <div id="otpStatus" class="small mt-2" role="status" aria-live="polite"></div>
-                        </div>
+                        <label asp-for="CaptchaAnswer" class="form-label"></label>
+                        <input asp-for="CaptchaAnswer" class="form-control" autocomplete="off" autocapitalize="characters" />
+                        <span asp-validation-for="CaptchaAnswer" class="text-danger"></span>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Register</button>
@@ -62,52 +60,4 @@
             </div>
         </div>
     </div>
-</div>
-
-@section Scripts {
-    <script>
-        const otpSection = document.getElementById('otpSection');
-        const otpStatus = document.getElementById('otpStatus');
-        const sendOtpButton = document.getElementById('sendOtpButton');
-
-        function showOtpSection(message, isSuccess) {
-            otpSection.classList.remove('d-none');
-            otpStatus.textContent = message || 'Verification code sent.';
-            otpStatus.classList.toggle('text-danger', !isSuccess);
-            otpStatus.classList.toggle('text-success', isSuccess);
-            if (isSuccess) {
-                sendOtpButton.textContent = 'Resend OTP';
-                const otpInput = document.getElementById('OtpCode');
-                if (otpInput) {
-                    otpInput.focus();
-                }
-            }
-        }
-
-        sendOtpButton.addEventListener('click', function () {
-            const email = document.getElementById('Email').value.trim();
-            if (!email) {
-                showOtpSection('Enter your email address first.', false);
-                return;
-            }
-
-            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
-            fetch('@Url.Action("SendRegistrationOtp", "Account")', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'RequestVerificationToken': token
-                },
-                body: new URLSearchParams({ email })
-            })
-                .then(async response => ({ response, data: await response.json() }))
-                .then(({ response, data }) => {
-                    const message = data.message || 'Request could not be completed.';
-                    showOtpSection(message, response.ok);
-                })
-                .catch(() => {
-                    showOtpSection('Email verification is temporarily unavailable.', false);
-                });
-        });
-    </script>
 }
